@@ -11,40 +11,37 @@ OUTPUT_DIR = 'data'
 NODE_FEATURES_FILE = os.path.join(OUTPUT_DIR, 'node_features.pt')
 NODE_MAP_FILE = os.path.join(OUTPUT_DIR, 'paper_id_to_node_idx.json')
 
-# Use a smaller, efficient model if SciBERT is too slow/large
+# We have an A100, let's use the full SciBERT model.
 MODEL_NAME = 'allenai/scibert_scivocab_uncased' # 768-dim
-# MODEL_NAME = 'distilbert-base-uncased' # 768-dim, but faster
-# MODEL_NAME = 'sentence-transformers/all-MiniLM-L6-v2' # 384-dim, very fast
-# BATCH_SIZE = 64 # Adjust based on your GPU VRAM
-BATCH_SIZE = 1024
+# An A100 can handle a large batch size.
+BATCH_SIZE = 512 
 # ---------------------
 
 def generate_features():
-    """
-    Loads the preprocessed nodes.csv, generates node features using a
-    pre-trained model (like SciBERT or DistilBERT), and saves:
-    1. node_features.pt: A [num_nodes, feature_dim] tensor.
-    2. paper_id_to_node_idx.json: A mapping from string paper_id to integer node index.
-    """
-    
-    print(f"Loading preprocessed nodes from {NODES_FILE}...")
     if not os.path.exists(NODES_FILE):
         print(f"Error: {NODES_FILE} not found. Please run '01_preprocess_data.py' first.")
         return
-        
-    nodes_df = pd.read_csv(NODES_FILE).fillna('')
+
+    print("--- Starting Feature Generation ---")
     
-    # 1. Create and save the paper_id to node_idx mapping
-    print("Creating paper_id to node_idx mapping...")
-    # Ensure a consistent integer index
+    # 1. Load nodes
+    # --- FIX: Specify dtype for paper_id ---
+    print(f"Loading {NODES_FILE}...")
+    nodes_df = pd.read_csv(NODES_FILE, dtype={'paper_id': str}).fillna('')
+    print(f"Loaded {len(nodes_df)} nodes.")
+
+    # 2. Create paper_id to sequential node_idx mapping
+    # This is crucial. The graph needs 0-indexed integer IDs.
+    print("Creating paper_id to node_idx map...")
     nodes_df = nodes_df.reset_index().rename(columns={'index': 'node_idx'})
-    paper_id_to_node_idx = pd.Series(nodes_df.node_idx.values, index=nodes_df.paper_id).to_dict()
+    # --- FIX: Ensure paper_id is string type for map keys ---
+    paper_id_to_idx = pd.Series(nodes_df.node_idx.values, index=nodes_df.paper_id.astype(str)).to_dict()
     
     with open(NODE_MAP_FILE, 'w') as f:
-        json.dump(paper_id_to_node_idx, f)
-    print(f"Saved mapping to {NODE_MAP_FILE}")
-    
-    # 2. Set up model and tokenizer
+        json.dump(paper_id_to_idx, f)
+    print(f"Saved map to {NODE_MAP_FILE}")
+
+    # 3. Generate embeddings
     print(f"Loading pre-trained model: {MODEL_NAME}")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -53,7 +50,6 @@ def generate_features():
     model = AutoModel.from_pretrained(MODEL_NAME).to(device)
     model.eval()
     
-    # 3. Generate embeddings in batches
     print(f"Generating node embeddings in batches of {BATCH_SIZE}...")
     all_texts = (nodes_df['title'] + " " + nodes_df['abstract']).tolist()
     all_embeddings = []
@@ -61,25 +57,31 @@ def generate_features():
     for i in tqdm(range(0, len(all_texts), BATCH_SIZE), desc="Generating Embeddings"):
         batch_texts = all_texts[i:i + BATCH_SIZE]
         
+        # Tokenize batch
         inputs = tokenizer(batch_texts, return_tensors='pt', padding=True, truncation=True, max_length=512)
         inputs = {key: val.to(device) for key, val in inputs.items()}
         
+        # Get embeddings
         with torch.no_grad():
             outputs = model(**inputs)
         
         # Use the embedding of the [CLS] token
+        # [batch_size, sequence_length, hidden_size] -> [batch_size, hidden_size]
         cls_embeddings = outputs.last_hidden_state[:, 0, :].cpu()
         all_embeddings.append(cls_embeddings)
         
-    # Concatenate all batch embeddings into a single tensor
+    # Combine all batch embeddings
     x = torch.cat(all_embeddings, dim=0)
     
     # 4. Save the final tensor
-    torch.save(x, NODE_FEATURES_FILE)
-    
-    print("\n--- Feature Generation Complete ---")
+    print(f"\n--- Feature Generation Complete ---")
     print(f"Node features tensor shape: {x.shape}")
+    torch.save(x, NODE_FEATURES_FILE)
     print(f"Saved node features to {NODE_FEATURES_FILE}")
 
 if __name__ == "__main__":
     generate_features()
+
+# --- Feature Generation Complete ---
+# Node features tensor shape: torch.Size([4894402, 768])
+# Saved node features to data/node_features.pt

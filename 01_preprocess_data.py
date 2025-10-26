@@ -2,86 +2,82 @@ import ijson
 import pandas as pd
 from tqdm import tqdm
 import os
-import csv
+import sys
 
 # --- Configuration ---
-INPUT_JSON_FILE = 'data/dblp.v12.json'
-OUTPUT_DIR = 'data'
-NODES_FILE = os.path.join(OUTPUT_DIR, 'nodes.csv')
-EDGES_FILE = os.path.join(OUTPUT_DIR, 'edges.csv')
+JSON_FILE = 'data/dblp-v12.json'
+NODES_FILE = 'data/nodes.csv'
+EDGES_FILE = 'data/edges.csv'
 # ---------------------
 
-def preprocess_data():
-    """
-    Streams the massive DBLP JSON file and creates two CSVs:
-    1. nodes.csv: [paper_id, year, title, abstract]
-    2. edges.csv: [source_id, target_id] (representing a citation)
-    """
+def preprocess_json():
+    # Make data directory if it doesn't exist
+    os.makedirs(os.path.dirname(JSON_FILE), exist_ok=True)
     
-    # Ensure the output directory exists
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    if not os.path.exists(JSON_FILE):
+        print(f"Error: {JSON_FILE} not found.")
+        print("Please run 'python data/download_dataset.py' first.")
+        sys.exit()
     
-    print(f"Starting preprocessing of {INPUT_JSON_FILE}...")
-    print(f"Output nodes will be in {NODES_FILE}")
-    print(f"Output edges will be in {EDGES_FILE}")
+    print(f"Starting preprocessing of {JSON_FILE}...")
+    nodes_data = []
+    edges_data = []
     
-    # Use context managers to handle file opening and closing
-    with open(INPUT_JSON_FILE, 'rb') as f_in, \
-         open(NODES_FILE, 'w', newline='', encoding='utf-8') as f_nodes, \
-         open(EDGES_FILE, 'w', newline='', encoding='utf-8') as f_edges:
-        
-        # Create CSV writers
-        nodes_writer = csv.writer(f_nodes)
-        nodes_writer.writerow(['paper_id', 'year', 'title', 'abstract'])
-        
-        edges_writer = csv.writer(f_edges)
-        edges_writer.writerow(['source_id', 'target_id'])
-        
-        # Use ijson to parse the file iteratively
-        parser = ijson.items(f_in, 'item')
-        
-        node_count = 0
-        edge_count = 0
-        
-        # Use tqdm for a progress bar
-        for paper in tqdm(parser, desc="Parsing DBLP JSON"):
+    # Use ijson to iteratively parse the massive JSON file
+    with open(JSON_FILE, 'rb') as f:
+        parser = ijson.items(f, 'item')
+        for paper in tqdm(parser, desc="Parsing Papers"):
             try:
-                # We need at least an ID and a year for temporal splitting
-                if 'id' not in paper or 'year' not in paper:
+                # We only require an id and a title.
+                # We will keep nodes with missing years (default to 0)
+                # and filter them out during the training split.
+                if 'id' not in paper or 'title' not in paper:
                     continue
                 
-                paper_id = paper['id']
+                # --- FIX: Ensure IDs are treated as strings ---
+                paper_id = str(paper['id'])
+                # Default to 0 if year is missing or invalid
                 year = int(paper.get('year', 0))
-                
-                # Skip papers with invalid year
-                if year == 0:
-                    continue
-                    
                 title = paper.get('title', '')
+                # Default to empty string if abstract is missing
                 abstract = paper.get('abstract', '')
                 
-                # Write node data
-                nodes_writer.writerow([paper_id, year, title, abstract])
-                node_count += 1
+                # Add to nodes list
+                nodes_data.append({
+                    'paper_id': paper_id,
+                    'year': year,
+                    'title': title,
+                    'abstract': abstract
+                })
                 
-                # Write edge data
+                # Add to edges list
                 if 'references' in paper:
                     for ref_id in paper['references']:
-                        if ref_id: # Ensure ref_id is not empty
-                            edges_writer.writerow([paper_id, ref_id])
-                            edge_count += 1
-                            
+                        edges_data.append({
+                            'source_id': paper_id,
+                            # --- FIX: Ensure target IDs are also strings ---
+                            'target_id': str(ref_id)
+                        })
             except Exception as e:
-                print(f"Warning: Skipping a paper due to error: {e}")
-                
-    print("\n--- Preprocessing Complete ---")
-    print(f"Total nodes (papers) processed: {node_count}")
-    print(f"Total edges (citations) processed: {edge_count}")
-    print(f"Files saved: {NODES_FILE}, {EDGES_FILE}")
+                print(f"Error processing a paper: {e}. Skipping.")
+    
+    # Create DataFrames and save
+    print("Saving nodes to CSV...")
+    nodes_df = pd.DataFrame(nodes_data)
+    # Ensure column types are correct before saving
+    nodes_df['paper_id'] = nodes_df['paper_id'].astype(str)
+    nodes_df['year'] = nodes_df['year'].astype(int)
+    nodes_df.to_csv(NODES_FILE, index=False)
+    
+    print("Saving edges to CSV...")
+    edges_df = pd.DataFrame(edges_data)
+    # Ensure column types are correct before saving
+    edges_df['source_id'] = edges_df['source_id'].astype(str)
+    edges_df['target_id'] = edges_df['target_id'].astype(str)
+    edges_df.to_csv(EDGES_FILE, index=False)
+    
+    print("Preprocessing complete.")
 
 if __name__ == "__main__":
-    if not os.path.exists(INPUT_JSON_FILE):
-        print(f"Error: Input file not found at {INPUT_JSON_FILE}")
-        print("Please download 'dblp-v12.json' and place it in the 'data/' directory.")
-    else:
-        preprocess_data()
+    preprocess_json()
+

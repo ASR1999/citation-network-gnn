@@ -1,10 +1,9 @@
-torch
-torchvision
-torchaudio
-torch-geometric
-transformers
 pandas
 tqdm
 ijson
 scikit-learn
-scipy
+transformers
+kaggle
+pyg-lib
+torch-sparse
+numpy

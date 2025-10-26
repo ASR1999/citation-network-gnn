@@ -1,2 +1,3 @@
 /data/*
 data/dblp.v12.json
+__pycache__/
