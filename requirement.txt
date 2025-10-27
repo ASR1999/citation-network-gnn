@@ -1,9 +1,40 @@
-pandas
-tqdm
-ijson
-scikit-learn
-transformers
-kaggle
+# Core PyTorch and CUDA (Install via conda first recommended)
+# Example conda install command (adjust versions as needed for your system):
+# conda install pytorch torchvision torchaudio pyg pytorch-cuda=12.1 -c pytorch -c nvidia -c pyg
+
+torch
+torchvision
+torchaudio
+
+# PyTorch Geometric core library (usually installed via conda or pip with extras)
+
+torch-geometric
+
+# Required PyG backend libraries (usually installed via conda or pip with extras)
+# Example pip install command (adjust versions for your torch/cuda):
+# pip install pyg-lib torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.4.1+cu121.html
+
 pyg-lib
+torch-scatter
 torch-sparse
+torch-cluster
+
+# Data Handling and Processing
+
+pandas
 numpy
+ijson  # For large JSON parsing
+scikit-learn # For metrics (roc_auc_score, average_precision_score)
+
+# Model Loading and Utilities
+
+transformers # For SciBERT/AutoModel
+safetensors # For secure model loading
+tqdm # Progress bars
+
+# Dataset Download
+
+kaggle # For downloading the dataset via API
+
+# Note: Specific versions are omitted as they depend heavily on the conda solver's resolution based on your CUDA version and PyTorch requirements.
+# It's recommended to create the environment using the conda commands provided in the conversation history for best compatibility.
