@@ -188,7 +188,6 @@ def train_epoch(encoder, predictor, train_loader, optimizer, criterion, device):
 
 @torch.no_grad()
 def test(encoder, predictor, loader, device):
-    # ... (test function remains identical) ...
     encoder.eval()
     predictor.eval()
 
@@ -292,12 +291,6 @@ def main():
     optimizer = torch.optim.Adam(params, lr=LEARNING_RATE)
     criterion = torch.nn.BCEWithLogitsLoss()
 
-    # --- Remove best model tracking variables ---
-    # best_val_auc = 0.0
-    # best_epoch = 0
-    # epochs_no_improve = 0
-    # ---
-
     print("\n--- Starting Training ---")
     last_epoch = 0 # Keep track of the last epoch completed
     for epoch in range(1, EPOCHS + 1):
@@ -313,20 +306,8 @@ def main():
         torch.save(encoder.state_dict(), epoch_encoder_path)
         torch.save(predictor.state_dict(), epoch_predictor_path)
         last_epoch = epoch # Update last completed epoch
-        # --- End saving logic ---
-
-        # --- Remove best model saving and early stopping ---
-        # if val_auc > best_val_auc + MIN_DELTA:
-        #    ...
-        # else:
-        #    ...
-        # if epochs_no_improve >= EARLY_STOPPING_PATIENCE:
-        #    ...
-        #    break
-        # ---
 
     print("--- Training Complete ---")
-    # print(f"Best Validation AUC: {best_val_auc:.4f} achieved at epoch {best_epoch}") # No longer relevant
 
     # Final Test using the model from the LAST completed epoch
     print(f"Loading model weights from last epoch ({last_epoch}) for final test evaluation...")
