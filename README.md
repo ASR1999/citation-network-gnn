@@ -1,4 +1,5 @@
-## citation-network-gnn
+## Scholarly-GAT: A Graph Attention Network for Link Prediction and Recommendation in Temporal Citation Networks
+### citation-network-gnn
 
 A complete, end-to-end pipeline for citation recommendation on the DBLP graph using Graph Neural Networks (GNNs). We:
 
