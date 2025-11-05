@@ -17,6 +17,7 @@ except ImportError:
     print("Install with: pip install safetensors")
 
 from transformers import AutoTokenizer, AutoModel
+from model import GATEncoder
 import sys
 import numpy as np # Needed for numpy arrays in tensor creation
 
@@ -26,7 +27,7 @@ import numpy as np # Needed for numpy arrays in tensor creation
 # --- Configuration ---
 DATA_DIR = 'data'
 NODES_FILE = os.path.join(DATA_DIR, 'nodes.csv')
-# EDGES_FILE = os.path.join(DATA_DIR, 'edges.csv') # Needed for train_edge_index
+EDGES_FILE = os.path.join(DATA_DIR, 'edges.csv')
 NODE_FEATURES_FILE = os.path.join(DATA_DIR, 'node_features.pt')
 NODE_MAP_FILE = os.path.join(DATA_DIR, 'paper_id_to_node_idx.json')
 
@@ -221,15 +222,19 @@ class Recommender:
         query_text = query_title + " " + query_abstract
         x_query = self._get_query_embedding(query_text)
 
-        # 2. Compute similarity (all tensors on CPU)
-        # Compare the query's initial embedding (x_query) against
-        # the *initial* embeddings of all papers in the database (x_all).
-        print("Calculating similarities...")
+        # 2. Map query embedding into the GAT latent space and compute similarity
+        # Create a self-loop edge for a single-node graph so GATConv can operate
+        print("Calculating similarities (graph-aware space)...")
         if x_query.shape[0] != 1:
              print(f"Error: Query embedding has unexpected shape: {x_query.shape}")
              return pd.DataFrame()
-        # Ensure devices match before similarity calculation
-        sim = F.cosine_similarity(x_query, self.x_all.to(x_query.device)) # <-- Use x_all here
+
+        edge_index_query = torch.tensor([[0],[0]], dtype=torch.long, device=self.device)
+        with torch.no_grad():
+            z_query = self.encoder(x_query.to(self.device), edge_index_query).cpu()
+
+        # Compare the query's graph-aware embedding against graph-aware embeddings of all papers
+        sim = F.cosine_similarity(z_query, self.z_all)
 
         # 3. Get top-k recommendations
         print(f"Finding top {k} recommendations...")
